@@ -1169,7 +1169,7 @@ VIS_INTERNAL int
 vis_lua_option_register(lua_State *L)
 {
 	Vis *vis = obj_ref_check(L, 1, "vis");
-	const char *name = luaL_checkstring(L, 2);
+	str8        name = vis_lua_check_str8(L, 2);
 	str8        type = vis_lua_check_str8(L, 3);
 	const void *set  = func_ref_new(L, 4);
 	const void *get  = 0;
@@ -1186,7 +1186,7 @@ vis_lua_option_register(lua_State *L)
 		flags |= VIS_OPTION_TYPE_NUMBER;
 	else
 		flags |= VIS_OPTION_TYPE_BOOL;
-	bool ret = vis_option_register(vis, (const char *[]){name, 0}, flags, vis_lua_option_set_handler,
+	bool ret = vis_option_register(vis, name.data, name.length, flags, vis_lua_option_set_handler,
 	                               vis_lua_option_get_handler, (void *)set, (void *)get, help);
 	lua_pushboolean(L, ret);
 	return 1;
@@ -1203,13 +1203,13 @@ VIS_INTERNAL int
 vis_lua_option_unregister(lua_State *L)
 {
 	Vis *vis = obj_ref_check(L, 1, "vis");
-	const char *name = luaL_checkstring(L, 2);
-	bool ret = vis_option_unregister(vis, name);
-	lua_pushboolean(L, ret);
+	str8 name = vis_lua_check_str8(L, 2);
+	lua_pushboolean(L, vis_option_unregister(vis, name.data, name.length));
 	return 1;
 }
 
-static bool command_lua(Vis *vis, Win *win, void *data, bool force, const char *argv[], Selection *sel, Filerange *range) {
+VIS_INTERNAL VIS_COMMAND_FUNCTION(vis_lua_command_handler)
+{
 	lua_State *L = vis->lua;
 	if (!L || !func_ref_get(L, data))
 		return false;
@@ -1255,10 +1255,10 @@ static bool command_lua(Vis *vis, Win *win, void *data, bool force, const char *
  */
 static int command_register(lua_State *L) {
 	Vis *vis = obj_ref_check(L, 1, "vis");
-	const char *name = luaL_checkstring(L, 2);
+	str8        name = vis_lua_check_str8(L, 2);
 	const void *func = func_ref_new(L, 3);
 	const char *help = luaL_optstring(L, 4, "");
-	bool ret = vis_cmd_register(vis, name, help, (void*)func, command_lua);
+	bool ret = vis_command_register(vis, name.data, name.length, help, (void*)func, vis_lua_command_handler);
 	lua_pushboolean(L, ret);
 	return 1;
 }
@@ -1276,11 +1276,11 @@ static int command_register(lua_State *L) {
  */
 static int complete_command(lua_State *L) {
 	Vis *vis = obj_ref_check(L, 1, "vis");
-	const char *prefix = luaL_checkstring(L, 2);
+	str8 prefix = vis_lua_check_str8(L, 2);
 	char *out = NULL, *err = NULL;
 
 	Buffer buf = {0};
-	vis_print_cmds(vis, &buf, prefix);
+	vis_print_commands(vis, &buf, prefix.data, prefix.length);
 	int status = vis_pipe_buf_collect(vis, buffer_content0(&buf), (const char*[]){"vis-menu", "-b", 0},
 	                                  &out, &err, false);
 

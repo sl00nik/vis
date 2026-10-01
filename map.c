@@ -28,58 +28,83 @@ struct Node {
 };
 
 /* Closest key to this in a non-empty map. */
-static Map *closest(Map *n, const char *key)
+VIS_INTERNAL Map *
+vis_map_step_closest(Map *n, str8 key)
 {
-	size_t len = strlen(key);
-	const uint8_t *bytes = (const uint8_t *)key;
-
 	/* Anything with NULL value is an internal node. */
 	while (!n->v) {
-		uint8_t direction = 0;
-
-		if (n->u.n->byte_num < len) {
-			uint8_t c = bytes[n->u.n->byte_num];
+		u8 direction = 0;
+		if (n->u.n->byte_num < key.length) {
+			u8 c = key.data[n->u.n->byte_num];
 			direction = (c >> n->u.n->bit_num) & 1;
 		}
-		n = &n->u.n->child[direction];
+		n = n->u.n->child + direction;
 	}
 	return n;
 }
 
-void *map_get(const Map *map, const char *key)
+VIS_INTERNAL void *
+vis_map_get(const Map *map, str8 key)
 {
+	void *result = 0;
 	/* Not empty map? */
 	if (map->u.n) {
-		Map *n = closest((Map *)map, key);
-		if (strcmp(key, n->u.s) == 0)
-			return n->v;
+		Map *n = vis_map_step_closest((Map *)map, key);
+		if (str8_equal(key, str8_from_c_str(n->u.s)))
+			result = n->v;
 	}
-	return NULL;
-}
-
-void *map_closest(const Map *map, const char *prefix)
-{
-	void *result = map_get(map, prefix);
-	if (!result)
-		result = map_prefix(map, prefix)->v;
 	return result;
 }
 
-bool map_put(Map *map, const char *k, const void *value)
+VIS_INTERNAL Map *
+vis_map_prefix(Map *map, str8 prefix)
 {
-	size_t len = strlen(k);
-	const uint8_t *bytes = (const uint8_t *)k;
+	Map *n, *result;
+	/* Empty map -> return empty map. */
+	if (!map->u.n)
+		return map;
+
+	result = n = map;
+
+	/* We walk to find the top, but keep going to check prefix matches. */
+	while (!n->v) {
+		u8 c = 0;
+		if (n->u.n->byte_num < prefix.length)
+			c = prefix.data[n->u.n->byte_num];
+
+		n = n->u.n->child + ((c >> n->u.n->bit_num) & 1);
+		if (c) result = n;
+	}
+
+	/* Convenient return for prefixes which do not appear in map. */
+	static Map empty_map;
+	if (!str8_is_prefix(prefix, str8_from_c_str(n->u.s)))
+		result = &empty_map;
+
+	return result;
+}
+
+VIS_INTERNAL void *
+vis_map_closest(const Map *map, str8 prefix)
+{
+	void *result = vis_map_get(map, prefix);
+	if (!result)
+		result = vis_map_prefix((Map *)map, prefix)->v;
+	return result;
+}
+
+VIS_INTERNAL bool
+vis_map_put(Map *map, str8 ks, const void *value)
+{
 	Map *n;
 	Node *newn;
 	size_t byte_num;
-	uint8_t bit_num, new_dir;
-	char *key;
 
 	if (!value)
 		return false;
 
-	if (!(key = strdup(k)))
-		return false;
+	char *key = strndup((char *)ks.data, ks.length);
+	if (!key) return false;
 
 	/* Empty map? */
 	if (!map->u.n) {
@@ -89,7 +114,7 @@ bool map_put(Map *map, const char *k, const void *value)
 	}
 
 	/* Find closest existing key. */
-	n = closest(map, key);
+	n = vis_map_step_closest(map, ks);
 
 	/* Find where they differ. */
 	for (byte_num = 0; n->u.s[byte_num] == key[byte_num]; byte_num++) {
@@ -101,12 +126,13 @@ bool map_put(Map *map, const char *k, const void *value)
 	}
 
 	/* Find which bit differs */
-	uint8_t diff = (uint8_t)n->u.s[byte_num] ^ bytes[byte_num];
+	u8 diff = (u8)n->u.s[byte_num] ^ ks.data[byte_num];
 	/* TODO: bit_num = 31 - __builtin_clz(diff); ? */
+	u8 bit_num;
 	for (bit_num = 0; diff >>= 1; bit_num++);
 
 	/* Which direction do we go at this bit? */
-	new_dir = ((bytes[byte_num]) >> bit_num) & 1;
+	u8 new_dir = ((ks.data[byte_num]) >> bit_num) & 1;
 
 	/* Allocate new node. */
 	newn = malloc(sizeof(*newn));
@@ -122,16 +148,15 @@ bool map_put(Map *map, const char *k, const void *value)
 	/* Find where to insert: not closest, but first which differs! */
 	n = map;
 	while (!n->v) {
-		uint8_t direction = 0;
-
+		u8 direction = 0;
 		if (n->u.n->byte_num > byte_num)
 			break;
 		/* Subtle: bit numbers are "backwards" for comparison */
 		if (n->u.n->byte_num == byte_num && n->u.n->bit_num < bit_num)
 			break;
 
-		if (n->u.n->byte_num < len) {
-			uint8_t c = bytes[n->u.n->byte_num];
+		if (n->u.n->byte_num < ks.length) {
+			u8 c = ks.data[n->u.n->byte_num];
 			direction = (c >> n->u.n->bit_num) & 1;
 		}
 		n = &n->u.n->child[direction];
@@ -143,52 +168,44 @@ bool map_put(Map *map, const char *k, const void *value)
 	return true;
 }
 
-void *map_delete(Map *map, const char *key)
+VIS_INTERNAL void *
+vis_map_delete(Map *map, str8 key)
 {
-	size_t len = strlen(key);
-	const uint8_t *bytes = (const uint8_t *)key;
-	Map *parent = NULL, *n;
-	void *value = NULL;
-	uint8_t direction;
-
+	void *result = 0;
 	/* Empty map? */
-	if (!map->u.n)
-		return NULL;
-
-	/* Find closest, but keep track of parent. */
-	n = map;
-	/* Anything with NULL value is a node. */
-	while (!n->v) {
-		uint8_t c = 0;
-
-		parent = n;
-		if (n->u.n->byte_num < len) {
-			c = bytes[n->u.n->byte_num];
-			direction = (c >> n->u.n->bit_num) & 1;
-		} else {
-			direction = 0;
+	if (map->u.n) {
+		Map *parent = 0, *n = map;
+		u8 direction = 0;
+		/* Anything with NULL value is a node. */
+		while (!n->v) {
+			u8 c = 0;
+			parent = n;
+			if (n->u.n->byte_num < key.length) {
+				c = key.data[n->u.n->byte_num];
+				direction = (c >> n->u.n->bit_num) & 1;
+			} else {
+				direction = 0;
+			}
+			n = n->u.n->child + direction;
 		}
-		n = &n->u.n->child[direction];
+
+		if (str8_equal(key, str8_from_c_str(n->u.s))) {
+			free((char*)n->u.s);
+			result = n->v;
+
+			if (!parent) {
+				/* We deleted last node. */
+				map->u.n = 0;
+			} else {
+				Node *old = parent->u.n;
+				/* Raise other node to parent. */
+				*parent = old->child[!direction];
+				free(old);
+			}
+		}
 	}
 
-	/* Did we find it? */
-	if (strcmp(key, n->u.s))
-		return NULL;
-
-	free((char*)n->u.s);
-	value = n->v;
-
-	if (!parent) {
-		/* We deleted last node. */
-		map->u.n = NULL;
-	} else {
-		Node *old = parent->u.n;
-		/* Raise other node to parent. */
-		*parent = old->child[!direction];
-		free(old);
-	}
-
-	return value;
+	return result;
 }
 
 static bool iterate(Map n, bool (*handle)(const char *, void *, void *), const void *data)
@@ -222,47 +239,15 @@ static bool first(const char *key, void *value, void *data)
 	return false;
 }
 
-void *map_first(const Map *map, const char **key)
+VIS_INTERNAL void *
+vis_map_first(const Map *map, str8 *key)
 {
-	KeyValue kv = { 0 };
+	KeyValue kv = {0};
+	// TODO(rnp): cleanup, we shouldn't need to go through a callback just to get a node
 	map_iterate(map, first, &kv);
 	if (key && kv.key)
-		*key = kv.key;
+		*key = str8_from_c_str(kv.key);
 	return kv.value;
-}
-
-const Map *map_prefix(const Map *map, const char *prefix)
-{
-	const Map *n, *top;
-	size_t len = strlen(prefix);
-	const uint8_t *bytes = (const uint8_t *)prefix;
-
-	/* Empty map -> return empty map. */
-	if (!map->u.n)
-		return map;
-
-	top = n = map;
-
-	/* We walk to find the top, but keep going to check prefix matches. */
-	while (!n->v) {
-		uint8_t c = 0, direction;
-
-		if (n->u.n->byte_num < len)
-			c = bytes[n->u.n->byte_num];
-
-		direction = (c >> n->u.n->bit_num) & 1;
-		n = &n->u.n->child[direction];
-		if (c)
-			top = n;
-	}
-
-	if (strncmp(n->u.s, prefix, len)) {
-		/* Convenient return for prefixes which do not appear in map. */
-		static const Map empty_map;
-		return &empty_map;
-	}
-
-	return top;
 }
 
 static void map_clear_impl(Map n)
@@ -284,26 +269,29 @@ void map_clear(Map *map)
 	map->v = NULL;
 }
 
-static bool copy(Map *dest, Map n)
+VIS_INTERNAL bool
+vis_map_copy_recurse(Map *dest, Map n)
 {
+	bool result = true;
 	if (!n.v) {
-		return copy(dest, n.u.n->child[0]) &&
-		       copy(dest, n.u.n->child[1]);
+		result = vis_map_copy_recurse(dest, n.u.n->child[0]) &&
+		         vis_map_copy_recurse(dest, n.u.n->child[1]);
 	} else {
-		if (!map_put(dest, n.u.s, n.v) && map_get(dest, n.u.s) != n.v) {
-			map_delete(dest, n.u.s);
-			return map_put(dest, n.u.s, n.v);
+		str8 str = str8_from_c_str(n.u.s);
+		if (!vis_map_put(dest, str, n.v) && vis_map_get(dest, str) != n.v) {
+			vis_map_delete(dest, str);
+			result = vis_map_put(dest, str, n.v);
 		}
-		return true;
 	}
+	return result;
 }
 
-bool map_copy(Map *dest, Map *src)
+VIS_INTERNAL bool
+vis_map_copy(Map *dest, Map *src)
 {
-	if (!src || !src->u.n)
-		return true;
-
-	return copy(dest, *src);
+	bool result = !src || !src->u.n;
+	if (!result) result = vis_map_copy_recurse(dest, *src);
+	return result;
 }
 
 bool map_empty(const Map *map)

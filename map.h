@@ -19,13 +19,13 @@ VIS_INTERNAL Map *map_new(void);
  * @param map The map to search within.
  * @param key The key to look up.
  */
-VIS_INTERNAL void *map_get(const Map *map, const char *key);
+VIS_INTERNAL void *vis_map_get(const Map *map, str8 key);
 /**
  * Get first element of the map, or ``NULL`` if empty.
  * @param map The map to query.
  * @param key Updated with the key of the first element.
  */
-VIS_INTERNAL void *map_first(const Map *map, const char **key);
+VIS_INTERNAL void *vis_map_first(const Map *map, str8 *key);
 /**
  * Lookup element by unique prefix match.
  * @param map The map to search within.
@@ -33,7 +33,7 @@ VIS_INTERNAL void *map_first(const Map *map, const char **key);
  * @return The corresponding value, if the given prefix is unique.
  * Otherwise ``NULL``.
  */
-VIS_INTERNAL void *map_closest(const Map *map, const char *prefix);
+VIS_INTERNAL void *vis_map_closest(const Map *map, str8 prefix);
 /**
  * Store a key value pair in the map.
  * @param map The map to store the key-value pair in.
@@ -42,20 +42,20 @@ VIS_INTERNAL void *map_closest(const Map *map, const char *prefix);
  * @return False if we run out of memory, or if the key
  * already appears in the map.
  */
-VIS_INTERNAL bool map_put(Map *map, const char *key, const void *value);
+VIS_INTERNAL bool vis_map_put(Map *map, str8 key, const void *value);
 /**
  * Remove a map element.
  * @param map The map to remove the element from.
  * @param key The key of the element to remove.
  * @return The removed entry or ``NULL`` if no such element exists.
  */
-VIS_INTERNAL void *map_delete(Map *map, const char *key);
+VIS_INTERNAL void *vis_map_delete(Map *map, str8 key);
 /**
  * Copy all entries from ``src`` into ``dest``, overwrites existing entries in ``dest``.
  * @param dest The destination map.
  * @param src The source map.
  */
-VIS_INTERNAL bool map_copy(Map *dest, Map *src);
+VIS_INTERNAL bool vis_map_copy(Map *dest, Map *src);
 /**
  * Ordered iteration over a map.
  * Invokes the passed callback for every map entry.
@@ -74,7 +74,7 @@ VIS_INTERNAL void map_iterate(const Map *map, bool (*handle)(const char *key, vo
  * Do not alter the map while using the return value.
  * @endrst
  */
-VIS_INTERNAL const Map *map_prefix(const Map *map, const char *prefix);
+VIS_INTERNAL Map *vis_map_prefix(Map *map, str8 prefix);
 /**
  * Test whether the map is empty (contains no elements).
  * @param map The map to check.

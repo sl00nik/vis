@@ -1137,12 +1137,14 @@ VIS_EXPORT bool vis_macro_replay(Vis *vis, enum VisRegister reg);
 VIS_EXPORT bool vis_cmd(Vis *vis, const char *cmd);
 
 /** Command handler function. */
-typedef bool (VisCommandFunction)(Vis*, Win*, void *data, bool force,
-	const char *argv[], Selection*, Filerange*);
+#define VIS_COMMAND_FUNCTION(name) bool name(Vis *vis, Win *win, void *data, bool force, \
+                                             const char *argv[], Selection *sel, Filerange *range)
+typedef VIS_COMMAND_FUNCTION(VisCommandFunction);
 /**
  * Register new ``:``-command.
  * @param vis The editor instance.
  * @param name The command name.
+ * @param name_length The length of `name`.
  * @param help Optional single line help text.
  * @param context User supplied context pointer passed to the handler function.
  * @param func The function implementing the command logic.
@@ -1150,14 +1152,16 @@ typedef bool (VisCommandFunction)(Vis*, Win*, void *data, bool force,
  * .. note:: Any unique prefix of the command name will invoke the command.
  * @endrst
  */
-VIS_EXPORT bool vis_cmd_register(Vis *vis, const char *name, const char *help, void *context, VisCommandFunction *func);
+VIS_EXPORT bool vis_command_register(Vis *vis, uint8_t *name, int64_t name_length, const char *help,
+                                     void *context, VisCommandFunction *func);
 
 /**
  * Unregister ``:``-command.
  * @param vis The editor instance.
  * @param name The name of the command to unregister.
+ * @param name_length The length of `name`.
  */
-VIS_EXPORT bool vis_cmd_unregister(Vis *vis, const char *name);
+VIS_EXPORT bool vis_command_unregister(Vis *vis, uint8_t *name, int64_t name_length);
 
 /** @} */
 
@@ -1200,7 +1204,8 @@ typedef VIS_OPTION_GET_FUNCTION(VisOptionGetFunction);
 /**
  * Register a new ``:set`` option.
  * @param vis The editor instance.
- * @param names A ``NULL`` terminated array of option names.
+ * @param name The name for the option.
+ * @param name_length The length of `name`.
  * @param option_flags The applicable option flags.
  * @param set The function which handles a set operation for the option.
  * @param get The function which handles a get operation for the option.
@@ -1208,21 +1213,22 @@ typedef VIS_OPTION_GET_FUNCTION(VisOptionGetFunction);
  * @param get_context User supplied context pointer passed to the get function.
  * @param help Optional single line help text.
  * @rst
- * .. note:: Fails if any of the given option names is already registered.
+ * .. note:: Fails if any the given option name is already registered.
  * @endrst
  */
-VIS_EXPORT bool vis_option_register(Vis *vis, const char *names[], VisOptionFlags flags,
+VIS_EXPORT bool vis_option_register(Vis *vis, uint8_t *name, int64_t name_length, VisOptionFlags flags,
                                     VisOptionSetFunction *set, VisOptionGetFunction *get,
                                     void *set_context, void *get_context, const char *help);
 /**
  * Unregister an existing ``:set`` option.
  * @param vis The editor instance.
  * @param name The name of the option to unregister.
+ * @param name_length The length of `name`.
  * @rst
  * .. note:: Also unregisters all aliases as given to `vis_option_register`.
  * @endrst
  */
-VIS_EXPORT bool vis_option_unregister(Vis *vis, const char *name);
+VIS_EXPORT bool vis_option_unregister(Vis *vis, uint8_t *name, int64_t name_length);
 
 /**
  * Execute any kind (``:``, ``?``, ``/``) of prompt command
@@ -1235,9 +1241,10 @@ VIS_EXPORT bool vis_prompt_cmd(Vis *vis, const char *cmd);
  * Write newline separated list of available commands to ``buf``
  * @param vis The editor instance.
  * @param buf The buffer to write to.
- * @param prefix Prefix to filter command list by.
+ * @param prefix Prefix to filter command list by (need not be 0 terminated).
+ * @param length Length of the prefix.
  */
-VIS_EXPORT void vis_print_cmds(Vis*, Buffer *buf, const char *prefix);
+VIS_EXPORT void vis_print_commands(Vis*, Buffer *buf, uint8_t *prefix, int64_t length);
 
 /**
  * Pipe a given file range to an external process.
